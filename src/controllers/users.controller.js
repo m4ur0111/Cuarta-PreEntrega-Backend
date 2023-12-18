@@ -39,29 +39,6 @@ function renderLoginPage(req, res) {
     res.render('login');
 }
 
-//FUNCION QUE AUN NO ES UTILIZADA CORRECTAMENTE
-// async function renderChatPage(req, res) {
-//     try {
-//         const userId = req.session.userId;
-//         const usuario = await userModel.findById(userId);
-
-//         if (!usuario) {
-//             req.logger.error('Usuario no encontrado:', userId);
-//             console.log("usuario no encontrado")
-//             return; 
-//         }
-
-//         res.render('chat', {
-//             nombreUsuario: usuario.nombre,
-//             rol: usuario.rol,
-//             userId: usuario.id,
-//         });
-//     } catch (error) {
-//         req.logger.error('Error en el servidor:', error);
-//         errorHandlers.customErrorHandler('errorServidor', res);
-//     }
-// }
-
 //Iniciar sesión del usuario
 async function loginUser(req, res) {
     try {
@@ -69,13 +46,17 @@ async function loginUser(req, res) {
         const usuario = await userDao.findUserByEmail(email);
 
         if (!usuario) {
-            errorHandlers.customErrorHandler('usuarioNoEncontrado', res); //Manejo de error personalizado
+            errorHandlers.customErrorHandler('usuarioNoEncontrado', res);
         } else {
             const isPasswordValid = await bcrypt.compare(pass, usuario.pass);
 
             if (!isPasswordValid) {
-                errorHandlers.customErrorHandler('contrasenaIncorrecta', res); //Manejo de error personalizado
+                errorHandlers.customErrorHandler('contrasenaIncorrecta', res);
             } else {
+                // Actualiza la propiedad last_connection al momento del login
+                usuario.last_connection = new Date();
+                await usuario.save();
+
                 req.session.userId = usuario._id;
                 req.session.email = email;
                 res.redirect('/');
@@ -87,14 +68,28 @@ async function loginUser(req, res) {
 }
 
 //Cerrar la sesión del usuario
-function logoutUser(req, res) {
-    req.session.destroy((err) => {
-        if (err) {
-            req.logger.error('Error al cerrar sesión:', err);
-            return res.status(500).json({ mensaje: 'Error al cerrar sesión' });
+async function logoutUser(req, res) {
+    try {
+        const userId = req.session.userId;
+
+        // Encuentra al usuario y actualiza la propiedad last_connection al momento del logout
+        const user = await userModel.findById(userId);
+        if (user) {
+            user.last_connection = new Date();
+            await user.save();
         }
-        res.redirect('/login');
-    });
+
+        req.session.destroy((err) => {
+            if (err) {
+                req.logger.error('Error al cerrar sesión:', err);
+                return res.status(500).json({ mensaje: 'Error al cerrar sesión' });
+            }
+            res.redirect('/login');
+        });
+    } catch (error) {
+        req.logger.error('Error en el servidor:', error);
+        res.status(500).json({ mensaje: 'Error al cerrar sesión' });
+    }
 }
 
 //Renderiza la vista del perfil del usuario
